@@ -81,6 +81,45 @@ void* bcast_thread_func(void *p)
 	return NULL;
 }
 
+void* client_server_thread_func(void *p)
+{
+	const int sfd = *((int*) p);
+
+	int client_type;
+
+	// read client type
+	read(sfd, & client_type, sizeof(int));
+
+	struct msg mesg;
+	char data[MAX_MSG_LEN];
+	mesg.data = & data[0];
+	
+	switch (client_type)
+	{
+		case 1:
+			// recv mesg and push it into queue
+			read(sfd, & mesg.T, sizeof(int));
+			read(sfd, & mesg.len, sizeof(int));
+			read(sfd, & mesg.data, mesg.len * sizeof(char));
+			myqueue_push(& mesg);
+			break;
+		case 2:
+			// pop a mesg from a queue and send it to client
+			myqueue_front(& mesg);
+			write(sfd, & mesg.T, sizeof(int));
+			write(sfd, & mesg.len, sizeof(int));
+			write(sfd, & mesg.data, mesg.len * sizeof(char));
+			myqueue_pop();
+			break;
+		default:
+			warn("invalid client type");
+	}
+	
+	close(sfd);		
+
+	return NULL;
+}
+
 int main()
 {
 	int N = 10;
@@ -121,8 +160,9 @@ int main()
 
 #warning Got some things TODO!
 
-	// TODO: catch and handle signals (sigterm - destroy que!, close fd's?)
-	// may be should fork()
+	// TODO: catch and handle signals 
+	// sigterm - destroy que!, close fd's, and other clean up)
+	// ...may be should fork()
 
 	int cfd;
 	while (1) // working loop
@@ -133,27 +173,8 @@ int main()
 			continue;
 		}
 
-		int client_type;
-
-		// read client type
-		read(cfd, & client_type, sizeof(int));
+		// TODO: create a thread to process accepted connection
 		
-		switch (client_type)
-		{
-			case 1:
-				// TODO
-				break;
-			case 2:
-				// TODO
-				break;
-			default:
-				warn("invalid client type");
-				close(cfd);
-				continue;
-		}
-		
-		// TODO: create corresponding thread to process accepted connection
-		// here	
 	}
 
 	myqueue_destroy();
