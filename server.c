@@ -63,18 +63,18 @@ void* bcast_thread_func(void *p)
 
 	while (1) // working loop
 	{
+		clock_gettime(CLOCK_MONOTONIC_RAW, & ts2);
+
 		if (bcast_condition())
 		{
-			clock_gettime(CLOCK_MONOTONIC_RAW, &ts2);
-
-			if (ts2.tv_sec - ts1.tv_sec == KL)
+			if (ts2.tv_sec - ts1.tv_sec >= KL)
 			{
 				if (write(sfd, & bcast_type, sizeof(int)) < 0)
 					warn("write() broadcast failed");
 				ts1 = ts2;
-			}
+			} 
 		}
-		else
+		else 
 			ts1 = ts2;
 	}
 
@@ -83,7 +83,10 @@ void* bcast_thread_func(void *p)
 
 void* client_server_thread_func(void *p)
 {
+	pthread_detach(pthread_self());
+
 	const int sfd = *((int*) p);
+	free(p);
 
 	int client_type;
 
@@ -128,8 +131,8 @@ int main()
 	int K, L;
 	K = L = 5;
 
-	int tcp_sfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	int udp_sfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	int tcp_sfd = socket(AF_INET, SOCK_STREAM,	IPPROTO_TCP);
+	int udp_sfd = socket(AF_INET, SOCK_DGRAM,	IPPROTO_UDP);
 
 	int bcast_enable = 1;
 	if (setsockopt(udp_sfd,	SOL_SOCKET, SO_BROADCAST, & bcast_enable, sizeof(bcast_enable)) < 0)
@@ -161,8 +164,7 @@ int main()
 #warning Got some things TODO!
 
 	// TODO: catch and handle signals 
-	// sigterm - destroy que!, close fd's, and other clean up)
-	// ...may be should fork()
+	// sigterm, sigint - destroy que!, close fd's, and other clean up)
 
 	int cfd;
 	while (1) // working loop
@@ -173,10 +175,14 @@ int main()
 			continue;
 		}
 
-		// TODO: create a thread to process accepted connection
-		
+		// create a thread to process accepted connection
+		pthread_t tid;
+		int *p = (int*) malloc(sizeof(int)); // thread would free it
+		*p = cfd;
+		pthread_create(& tid, NULL, client_server_thread_func, p);
 	}
 
+	// FIXME: this code is unreachable
 	myqueue_destroy();
 	
 	return 0; 
