@@ -12,7 +12,6 @@
 #include "myqueue.h"
 
 struct bcast_thread_arg {
-	int udp_sfd;
 	int KL;
 	int type; 
 };
@@ -29,13 +28,18 @@ void* bcast_thread_func(void *p)
 {
 	struct bcast_thread_arg *bta = (struct bcast_thread_arg*) p;	
 	const int KL = bta->KL;	
-	const int sfd = bta->udp_sfd;
 	const int type = bta->type;
+
+	const int sfd = socket(AF_INET, SOCK_DGRAM, 0);
+
+	int bcast_enable = 1;
+	if (setsockopt(sfd,	SOL_SOCKET, SO_BROADCAST, & bcast_enable, sizeof(bcast_enable)) < 0)
+		err(EXIT_FAILURE, "setsockopt broadcast failed"); 
 
 	struct sockaddr_in addr;
 	memset(& addr, 0, sizeof(struct sockaddr_in));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(65535); 
+	addr.sin_port = htons(SERVER_PORT); 
 	addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);	
 
 	if (connect(sfd, (struct sockaddr*) & addr, sizeof(addr)) < 0)
@@ -49,9 +53,6 @@ void* bcast_thread_func(void *p)
 			break;
 		case 2:
 			bcast_condition = bcast_condition2;
-			break;
-		default:
-			err(EXIT_FAILURE, "unknown bcast type");		
 	}
 
 	const int bcast_type = type;
@@ -135,16 +136,11 @@ int main()
 	K = L = 5;
 
 	int tcp_sfd = socket(AF_INET, SOCK_STREAM, 0);
-	int udp_sfd = socket(AF_INET, SOCK_DGRAM, 0);
-
-	int bcast_enable = 1;
-	if (setsockopt(udp_sfd,	SOL_SOCKET, SO_BROADCAST, & bcast_enable, sizeof(bcast_enable)) < 0)
-		err(EXIT_FAILURE, "setsockopt broadcast failed"); 
-
+	
 	struct sockaddr_in addr;
 	memset(&addr, 0, sizeof(struct sockaddr_in));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(65535);	// listening on port 65535
+	addr.sin_port = htons(SERVER_PORT);	
 	addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
 	if (bind(tcp_sfd, (struct sockaddr *) & addr, sizeof(addr)) == -1)
@@ -159,12 +155,9 @@ int main()
 	bta2.type = 2;
 	bta1.KL = K;
 	bta2.KL = L;
-	bta1.udp_sfd = bta2.udp_sfd = udp_sfd;
 	pthread_t tid;
 	pthread_create(& tid, NULL, bcast_thread_func, & bta1);
 	pthread_create(& tid, NULL, bcast_thread_func, & bta2);
-
-#warning Got some things TODO!
 
 	// TODO: catch and handle signals 
 	// sigterm, sigint - destroy que!, close fd's, and other clean up)
