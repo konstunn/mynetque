@@ -12,8 +12,7 @@ struct node {
 	struct node *next;
 };
 
-int N = 10;	// queue length 
-int nodes_cnt = 0; // no need of
+int N = 0;	// max queue elements count 
 
 struct node *head = NULL;
 struct node *back = NULL;
@@ -24,7 +23,7 @@ sem_t sem_left;
 pthread_mutex_t mutex;
 pthread_mutexattr_t mutattr;
 
-void myqueue_init(const int max_count)\
+void myqueue_init(const int max_count)
 {
 	pthread_mutexattr_init(& mutattr);
 	pthread_mutexattr_settype(& mutattr, PTHREAD_MUTEX_RECURSIVE_NP);
@@ -41,13 +40,17 @@ const int myqueue_max_count() {
 
 const int myqueue_count() 
 {
-	return nodes_cnt;
+	pthread_mutex_lock(& mutex);
+	int sval;
+	sem_getvalue(& sem_got, & sval);
+	pthread_mutex_unlock(& mutex);
+	return sval;
 }
 
 void myqueue_clear() {	
 	pthread_mutex_lock(& mutex);
 	
-	while (head != NULL)
+	while (myqueue_count() != 0)
 		myqueue_pop();
 
 	pthread_mutex_unlock(& mutex);
@@ -68,38 +71,47 @@ void myqueue_push(const struct msg *mp)
 {
 	sem_wait(& sem_left);
 
-	pthread_mutex_lock(& mutex);
+	// TODO: also block signals for current thread ?
+	pthread_mutex_lock(& mutex); 
 
 	struct node *np = (struct node*) malloc(sizeof(struct node));
 	memcpy(& np->msg, mp, sizeof(struct msg));
 
+	char *p = (char *) malloc(np->msg.len * sizeof(char));
+	memcpy(p, np->msg.data, np->msg.len);
+
+	np->msg.data = p;
+	np->next = NULL;
+
 	if (back != NULL) {
 		back->next = np;
 		back = back->next;
-	} else {
+	} else { 
 		back = np;				
 		head = np;
 	}
-
-	np->next = NULL;
 	
-	nodes_cnt ++;
 	sem_post(& sem_got);
 
+	// TODO: also make current thread catch signals ?
 	pthread_mutex_unlock(& mutex);
 
 	return;
 }
 
-void myqueue_front(const struct msg *frontmsg)
+// Memory at frontmsg must be preallocated.
+// Memory of size MAX_MSG_LEN bytes at frontmsg->data must be preallocated.
+void myqueue_front(struct msg *frontmsg)
 {
 	sem_wait(& sem_got);
 
-	pthread_mutex_lock(& mutex);
+	pthread_mutex_lock(& mutex); 
 
 	sem_post(& sem_got);
 
-	memcpy((void*) frontmsg, & head->msg, sizeof(struct msg));
+	memcpy(frontmsg, & head->msg, sizeof(struct msg));
+
+	memcpy(frontmsg->data, head->msg.data, frontmsg->len * sizeof(char));
 
 	pthread_mutex_unlock(& mutex);
 }
@@ -108,19 +120,20 @@ void myqueue_pop()
 {
 	sem_wait(& sem_got);
 
+	// TODO: also block signals for current thread ?
 	pthread_mutex_lock(& mutex);
 
-	struct node *pt = NULL;
-
-	if (head == back)
+	if (head == back) 
 		back = NULL;
-	pt = head;
-	head = head->next;
-	free(pt);
 
-	nodes_cnt --;
+	struct node *pt = head;
+	head = head->next; 
+
+	free(pt->msg.data);
+	free(pt); 
 
 	sem_post(& sem_left);
 
+	// TODO: also make current thread catch signals ? 
 	pthread_mutex_unlock(& mutex);
 }
