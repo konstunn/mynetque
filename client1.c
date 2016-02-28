@@ -6,21 +6,34 @@
 #include <limits.h> 
 #include <unistd.h> 
 #include <err.h> 
+#include <string.h> 
 #include "myqueue.h"
 
 int main()
 {
 	int udp_sfd = socket(AF_INET, SOCK_DGRAM, 0);
 	int tcp_sfd = socket(AF_INET, SOCK_STREAM, 0);
+
+	struct sockaddr_in addr;
+	memset(& addr, 0, sizeof(struct sockaddr_in));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(SERVER_PORT); 
+	addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);	
+
+	const int so_reuseaddr = 1;
+	if ((setsockopt(udp_sfd, SOL_SOCKET, SO_REUSEADDR, & so_reuseaddr, sizeof(int))) < 0)
+		err(EXIT_FAILURE, "setsockopt() failed"); 
+			
+	if (bind(udp_sfd, (struct sockaddr*) & addr, sizeof(struct sockaddr_in)) < 0)
+		err(EXIT_FAILURE, "bind() failed");
 	
 	while (1)
 	{
 		int buf;		
-		struct sockaddr_in addr;
 		socklen_t addrlen;
 
 		// wait for udp notification
-		// notice notification sender address (server address)
+		// get notification sender address (server address)
 		if (recvfrom(udp_sfd, & buf, sizeof(int), 0, (struct sockaddr*) & addr, & addrlen) < 0)
 		{
 			warn("recvfrom() failed");
@@ -53,7 +66,8 @@ int main()
 			write(tcp_sfd, & msg, len * sizeof(char));
 
 			close(tcp_sfd);
-		}
+		} else 
+			warnx("invalid client type");
 	}
 	
 	return 0;
