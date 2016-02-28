@@ -88,11 +88,14 @@ void* client_server_thread_func(void *p)
 	const int sfd = *((int*) p);
 	free(p);
 
-	int client_type;
+	int client_type = 0;
 
 	// read client type
-	read(sfd, & client_type, sizeof(int));
-
+	if (read(sfd, & client_type, sizeof(int)) < 0) {
+		warn("fail to receive client type");
+		return NULL;
+	}
+		
 	struct msg mesg;
 	char data[MAX_MSG_LEN];
 	mesg.data = & data[0];
@@ -131,8 +134,8 @@ int main()
 	int K, L;
 	K = L = 5;
 
-	int tcp_sfd = socket(AF_INET, SOCK_STREAM,	IPPROTO_TCP);
-	int udp_sfd = socket(AF_INET, SOCK_DGRAM,	IPPROTO_UDP);
+	int tcp_sfd = socket(AF_INET, SOCK_STREAM, 0);
+	int udp_sfd = socket(AF_INET, SOCK_DGRAM, 0);
 
 	int bcast_enable = 1;
 	if (setsockopt(udp_sfd,	SOL_SOCKET, SO_BROADCAST, & bcast_enable, sizeof(bcast_enable)) < 0)
@@ -169,14 +172,12 @@ int main()
 	int cfd;
 	while (1) // working loop
 	{
-		cfd = accept(tcp_sfd, NULL, NULL);
-		if (cfd == -1) {
+		if ((cfd = accept(tcp_sfd, NULL, NULL)) < 0) {
 			warn("accept() failed");
 			continue;
 		}
 
 		// create a thread to process accepted connection
-		pthread_t tid;
 		int *p = (int*) malloc(sizeof(int)); // thread would free it
 		*p = cfd;
 		pthread_create(& tid, NULL, client_server_thread_func, p);
