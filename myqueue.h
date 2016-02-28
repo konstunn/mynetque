@@ -1,7 +1,7 @@
 
-#include <stdio.h>
-
 #define MAX_MSG_LEN 1024
+#define MAX_MSG_PROCTIME_SEC 10 
+#define SERVER_PORT 65535
 
 struct msg {
 	int T;
