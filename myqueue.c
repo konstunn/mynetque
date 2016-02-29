@@ -67,7 +67,7 @@ void myqueue_destroy()
 	pthread_mutex_destroy(& mutex);
 }
 
-void myqueue_push(const struct msg *mp) 
+void myqueue_push(const struct msg *src) 
 {
 	sem_wait(& sem_left);
 
@@ -75,10 +75,10 @@ void myqueue_push(const struct msg *mp)
 	pthread_mutex_lock(& mutex); 
 
 	struct node *np = (struct node*) malloc(sizeof(struct node));
-	memcpy(& np->msg, mp, sizeof(struct msg));
+	memcpy(& np->msg, src, sizeof(struct msg));
 
-	char *p = (char *) malloc(np->msg.len * sizeof(char));
-	memcpy(p, np->msg.data, np->msg.len);
+	char *p = (char *) malloc(np->msg.len * sizeof(char)); // + 1 just in case (for '\0')
+	memcpy(p, src->data, np->msg.len);
 
 	np->msg.data = p;
 	np->next = NULL;
@@ -101,7 +101,7 @@ void myqueue_push(const struct msg *mp)
 
 // Memory at frontmsg must be preallocated.
 // Memory of size MAX_MSG_LEN bytes at frontmsg->data must be preallocated.
-void myqueue_front(struct msg *frontmsg)
+void myqueue_front(struct msg *dest)
 {
 	sem_wait(& sem_got);
 
@@ -109,9 +109,10 @@ void myqueue_front(struct msg *frontmsg)
 
 	sem_post(& sem_got);
 
-	memcpy(frontmsg, & head->msg, sizeof(struct msg));
+	dest->T = head->msg.T; 
+	dest->len = head->msg.len;
 
-	memcpy(frontmsg->data, head->msg.data, frontmsg->len * sizeof(char));
+	memcpy(dest->data, head->msg.data, dest->len * sizeof(char));
 
 	pthread_mutex_unlock(& mutex);
 }
