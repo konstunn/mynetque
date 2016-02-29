@@ -6,11 +6,35 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <err.h>
+#include <errno.h>
 #include <time.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <stdarg.h>
 #include "myqueue.h"
 
+int g_debug = 1;
+
+extern char* program_invocation_short_name;
+
+// FIXME: not executed atomically
+static void dbg(const char *fmt, ...) {
+	va_list args;
+
+	if (g_debug) {
+		va_start(args, fmt);
+		fflush(NULL);
+		
+		// TODO: get pid/tid and print it as well
+		fprintf(stderr, "%s: ", program_invocation_short_name); 
+
+		vfprintf(stderr, fmt, args);
+		fprintf(stderr, "\n");
+		fflush(NULL);
+		va_end(args);
+	}
+	return;
+}
 struct bcast_thread_arg {
 	int KL;
 	int type; 
@@ -60,11 +84,11 @@ void* bcast_thread_func(void *p)
 	struct timespec ts1;
 	struct timespec ts2;
 
-	clock_gettime(CLOCK_MONOTONIC_RAW, &ts1);
+	clock_gettime(CLOCK_THREAD_CPUTIME_ID, & ts1);
 
 	while (1) // working loop
 	{
-		clock_gettime(CLOCK_MONOTONIC_RAW, & ts2);
+		clock_gettime(CLOCK_THREAD_CPUTIME_ID, & ts2);
 
 		if (bcast_condition())
 		{
@@ -72,11 +96,15 @@ void* bcast_thread_func(void *p)
 			{
 				if (write(sfd, & bcast_type, sizeof(int)) < 0)
 					warn("write() broadcast failed");
-				ts1 = ts2;
+				else {
+					dbg("que cnt = %d, bcast type %d sent", myqueue_count(), bcast_type);
+				}
+
+				ts1.tv_sec = ts2.tv_sec;
 			} 
 		}
 		else 
-			ts1 = ts2;
+			ts1.tv_sec = ts2.tv_sec;
 	}
 
 	return NULL;
@@ -91,15 +119,19 @@ void* client_server_thread_func(void *p)
 
 	int client_type = 0;
 
+	// TODO: add magic sequence in the protocol 
+	// or use some auth method ?
+	
 	// read client type
 	if (read(sfd, & client_type, sizeof(int)) < 0) {
-		warn("fail to receive client type");
+		warn("failed to receive client type");
+		close(sfd);
 		return NULL;
 	}
 		
 	struct msg mesg;
-	char data[MAX_MSG_LEN];
-	mesg.data = & data[0];
+	char data[MAX_MSG_LEN+1];
+	mesg.data = data;
 	
 	switch (client_type)
 	{
@@ -107,23 +139,37 @@ void* client_server_thread_func(void *p)
 			// recv mesg and push it into queue
 			read(sfd, & mesg.T, sizeof(int));
 			read(sfd, & mesg.len, sizeof(int));
-			read(sfd, & mesg.data, mesg.len * sizeof(char));
+			read(sfd, mesg.data, mesg.len * sizeof(char));
 			myqueue_push(& mesg);
+			if (g_debug) {
+				data[mesg.len] = '\0';
+				dbg("rcvd \"%s\", len = %d, T = %d", data, mesg.len, mesg.T);
+			}
 			break;
 		case 2:
 			// pop a mesg from a queue and send it to client
-			myqueue_front(& mesg);
+			 	
+			myqueue_front(& mesg);	
+
+			// TODO: add myqueue_front_pop() function to myqueue.c
+			// that would perform front and pop atomically
+			myqueue_pop();			
+
 			write(sfd, & mesg.T, sizeof(int));
 			write(sfd, & mesg.len, sizeof(int));
-			write(sfd, & mesg.data, mesg.len * sizeof(char));
-			myqueue_pop();
+			write(sfd, mesg.data, mesg.len * sizeof(char));
+
+			if (g_debug) {
+				mesg.data[mesg.len] = '\0';
+				dbg("sent \"%s\", len = %d, T = %d", mesg.data, mesg.len, mesg.T);
+			}	
+
 			break;
 		default:
 			warn("invalid client type");
 	}
 	
 	close(sfd);		
-
 	return NULL;
 }
 
@@ -133,7 +179,7 @@ int main()
 	myqueue_init(N);
 
 	int K, L;
-	K = L = 5;
+	K = L = 10;
 
 	int tcp_sfd = socket(AF_INET, SOCK_STREAM, 0);
 	
@@ -160,7 +206,7 @@ int main()
 	pthread_create(& tid, NULL, bcast_thread_func, & bta2);
 
 	// TODO: catch and handle signals 
-	// sigterm, sigint - destroy que!, close fd's, and other clean up)
+	// sigterm, sigint - destroy que!, close fd's, and other clean up stuff)
 
 	int cfd;
 	while (1) // working loop
