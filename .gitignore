@@ -3,3 +3,5 @@ server.o
 client1
 client2
 server
+*.pb-c.c
+*.pb-c.h
