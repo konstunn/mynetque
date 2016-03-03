@@ -1,5 +1,4 @@
-myqueue.o
-server.o
+*.o
 client1
 client2
 server
