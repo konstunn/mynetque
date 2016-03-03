@@ -1,4 +1,7 @@
 
+#ifndef MYQUEUE_H
+#define MYQUEUE_H
+
 #define MAX_MSG_LEN				40
 #define MAX_MSG_PROCTIME_SEC	10
 #define SERVER_PORT				65535
@@ -20,3 +23,5 @@ void myqueue_front(struct msg*);
 
 const int myqueue_count();
 const int myqueue_max_count();
+
+#endif
