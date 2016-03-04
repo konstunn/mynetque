@@ -1,0 +1,5 @@
+
+message Message {
+	required int32 T = 1;
+	required bytes data = 2;
+}
