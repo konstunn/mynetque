@@ -2,14 +2,16 @@
 #ifndef MYQUEUE_H
 #define MYQUEUE_H
 
-#define MAX_MSG_LEN				40
+#define MAX_MSG_DATA_LEN		40
 #define MAX_MSG_PROCTIME_SEC	10
 #define SERVER_PORT				65535
+
+#define MAX_MSG_SIZE 1024
 
 struct msg {
 	int T;
 	int len;
-	char *data;
+	uint8_t *data;
 };
 
 void myqueue_init(int count);

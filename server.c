@@ -12,17 +12,23 @@
 #include <unistd.h>
 #include <stdarg.h>
 #include "myqueue.h"
+#include "message.pb-c.h"
+
+#define N 10
+#define K 10
+#define L 10
 
 int g_debug = 1;
 
 extern char* program_invocation_short_name;
 
-// FIXME: not executed atomically
+// TODO: test if executing atomically
 static void dbg(const char *fmt, ...) {
 	va_list args;
 
 	if (g_debug) {
 		va_start(args, fmt);
+		flockfile(stderr);
 		fflush(NULL);
 		
 		// TODO: get pid/tid and print it as well
@@ -31,10 +37,12 @@ static void dbg(const char *fmt, ...) {
 		vfprintf(stderr, fmt, args);
 		fprintf(stderr, "\n");
 		fflush(NULL);
+		funlockfile(stderr);
 		va_end(args);
 	}
 	return;
 }
+
 struct bcast_thread_arg {
 	int KL;
 	int type; 
@@ -129,57 +137,80 @@ void* client_server_thread_func(void *p)
 		return NULL;
 	}
 		
+	Message *pmessage;
+	Message message;
+
 	struct msg mesg;
-	char data[MAX_MSG_LEN+1];
-	mesg.data = data;
+	uint8_t data[MAX_MSG_DATA_LEN+1]; 
+	mesg.data = (uint8_t*) data;
+
+	uint8_t *buf;
+
+	int msg_len;
 	
-	switch (client_type)
+	if (client_type == 1)
 	{
-		case 1:
-			// recv mesg and push it into queue
-			read(sfd, & mesg.T, sizeof(int));
-			read(sfd, & mesg.len, sizeof(int));
-			read(sfd, mesg.data, mesg.len * sizeof(char));
-			myqueue_push(& mesg);
-			if (g_debug) {
-				data[mesg.len] = '\0';
-				dbg("rcvd \"%s\", len = %d, T = %d", data, mesg.len, mesg.T);
-			}
-			break;
-		case 2:
-			// pop a mesg from a queue and send it to client
-			 	
-			myqueue_front(& mesg);	
+		buf = (uint8_t*) malloc(MAX_MSG_SIZE);
+			
+		// recv mesg and push it into queue
+		msg_len = read(sfd, buf, MAX_MSG_SIZE);
 
-			// TODO: add myqueue_front_pop() function to myqueue.c
-			// that would perform front and pop atomically
-			myqueue_pop();			
+		pmessage = message__unpack(NULL, msg_len, buf);
+		mesg.T = pmessage->t;
+		mesg.len = pmessage->data.len;
+		mesg.data = pmessage->data.data;
 
-			write(sfd, & mesg.T, sizeof(int));
-			write(sfd, & mesg.len, sizeof(int));
-			write(sfd, mesg.data, mesg.len * sizeof(char));
+		myqueue_push(& mesg);
 
-			if (g_debug) {
-				mesg.data[mesg.len] = '\0';
-				dbg("sent \"%s\", len = %d, T = %d", mesg.data, mesg.len, mesg.T);
-			}	
+		if (g_debug) {
+			memcpy(buf, mesg.data, mesg.len);
+			buf[mesg.len] = '\0';
+			dbg("rcvd \"%s\", len = %d, T = %d", buf, mesg.len, mesg.T);
+		}
 
-			break;
-		default:
-			warn("invalid client type");
+		message__free_unpacked(pmessage, NULL);
+		free(buf);
+
+	} else if (client_type == 2) {
+		message__init(& message);	
+		
+		// pop a mesg from a queue and send it to client
+			
+		myqueue_front(& mesg);	
+
+		// TODO: add myqueue_front_pop() function to myqueue.c
+		// that would perform front and pop atomically
+		myqueue_pop();			
+
+		message.t = mesg.T;
+		message.data.len = mesg.len;
+		message.data.data = (uint8_t*) mesg.data;
+
+		int msg_size = message__get_packed_size(& message);
+		buf = (uint8_t*) malloc(msg_size);
+		message__pack(& message, buf);
+
+		write(sfd, buf, msg_size);
+
+		if (g_debug) {
+			memcpy(buf, mesg.data, mesg.len);
+			buf[mesg.len] = '\0';
+			dbg("sent \"%s\", len = %d, T = %d", buf, mesg.len, mesg.T);
+		}	
+
+		free(buf);
 	}
-	
+	else 	
+		warn("invalid client type");
+
 	close(sfd);		
 	return NULL;
 }
 
+
 int main()
 {
-	int N = 10;
 	myqueue_init(N);
-
-	int K, L;
-	K = L = 10;
 
 	int tcp_sfd = socket(AF_INET, SOCK_STREAM, 0);
 	

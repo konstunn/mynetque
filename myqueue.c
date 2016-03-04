@@ -1,9 +1,10 @@
 
-#include "myqueue.h"
 #include <stdlib.h>
 #include <string.h>
 #include <semaphore.h>
 #include <pthread.h>
+#include <stdint.h>
+#include "myqueue.h"
 
 // TODO: test, debug
 
@@ -77,7 +78,7 @@ void myqueue_push(const struct msg *src)
 	struct node *np = (struct node*) malloc(sizeof(struct node));
 	memcpy(& np->msg, src, sizeof(struct msg));
 
-	char *p = (char *) malloc(np->msg.len * sizeof(char)); // + 1 just in case (for '\0')
+	uint8_t *p = (uint8_t *) malloc(np->msg.len * sizeof(uint8_t)); 
 	memcpy(p, src->data, np->msg.len);
 
 	np->msg.data = p;
