@@ -8,6 +8,7 @@
 #include <err.h> 
 #include <string.h> 
 #include "myqueue.h"
+#include "message.pb-c.h"
 
 int main()
 {
@@ -52,25 +53,29 @@ int main()
 				continue;
 			}
 
-			int T; 
-			int len; 
-			unsigned char msg[MAX_MSG_LEN+1];
+			uint8_t *buf = (uint8_t*) malloc(MAX_MSG_SIZE);
+
+			Message *message;
 
 			write(tcp_sfd, & client_type, sizeof client_type);
-			read(tcp_sfd, & T, sizeof(int));
-			read(tcp_sfd, & len, sizeof(int));
-			read(tcp_sfd, & msg, len * sizeof(char));
 
+			int msg_len = read(tcp_sfd, buf, MAX_MSG_SIZE);
+			message = message__unpack(NULL, msg_len, buf);
+			
 			const int g_debug = 1;
 			
 			if (g_debug) {
-				msg[len] = '\0';
-				warnx("rcvd \"%s\", len = %d, T = %d", msg, len, T);
+				memcpy(buf, message->data.data, message->data.len);
+				buf[message->data.len] = '\0'; 
+				warnx("rcvd \"%s\", len = %lu, T = %d", buf, message->data.len, message->t);
 			}
 
 			close(tcp_sfd);
 
-			sleep(T);
+			sleep(message->t);
+
+			free(buf);
+			message__free_unpacked(message, NULL);
 		} 
 	}
 
